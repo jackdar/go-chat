@@ -1,60 +1,48 @@
 package protocol
 
 import (
-	"encoding/binary"
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 )
 
-func EncodeMessage(msgType MessageType, payload any) ([]byte, error) {
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	msg := Message{
-		Type:    msgType,
-		Payload: payloadBytes,
-	}
-
-	msgBytes, err := json.Marshal(msg)
+// EncodeMessage encodes a message as newline-delimited JSON
+func EncodeMessage(msg *Message) ([]byte, error) {
+	data, err := json.Marshal(msg)
 	if err != nil {
 		return nil, fmt.Errorf("marshal message: %w", err)
 	}
-
-	length := uint32(len(msgBytes))
-	result := make([]byte, 4+len(msgBytes))
-	binary.BigEndian.PutUint32(result[0:4], length)
-	copy(result[4:], msgBytes)
-
-	return result, nil
+	// Append newline for line-delimited protocol
+	return append(data, '\n'), nil
 }
 
+// DecodeMessage reads and decodes a newline-delimited JSON message
 func DecodeMessage(reader io.Reader) (*Message, error) {
-	lengthBuf := make([]byte, 4)
-	if _, err := io.ReadFull(reader, lengthBuf); err != nil {
-		return nil, fmt.Errorf("read length: %w", err)
-	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // 1MB max message size
 
-	length := binary.BigEndian.Uint32(lengthBuf)
-	if length > 1024*1024 {
-		return nil, fmt.Errorf("message too large: %d bytes", length)
-	}
-
-	msgBuf := make([]byte, length)
-	if _, err := io.ReadFull(reader, msgBuf); err != nil {
-		return nil, fmt.Errorf("read message: %w", err)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("read message: %w", err)
+		}
+		return nil, io.EOF
 	}
 
 	var msg Message
-	if err := json.Unmarshal(msgBuf, &msg); err != nil {
+	if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
 		return nil, fmt.Errorf("unmarshal message: %w", err)
 	}
 
 	return &msg, nil
 }
 
-func DecodePayload(msg *Message, target any) error {
-	return json.Unmarshal(msg.Payload, target)
+// WriteMessage encodes and writes a message
+func WriteMessage(writer io.Writer, msg *Message) error {
+	data, err := EncodeMessage(msg)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(data)
+	return err
 }

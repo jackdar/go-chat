@@ -23,21 +23,16 @@ func NewServer(config *Config) *Server {
 	}
 }
 
-func (s *Server) newListener() (net.Listener) {
-	listener, err := net.Listen("tcp", s.config.Address())
-	if err != nil {
-		log.Fatalf("Failed to listen %w", err)
-	}
-
-	log.Printf("Server listening on %s", s.config.Address())
-
-	return listener
-}
-
 func (s *Server) Start() error {
 	go s.hub.Run()
 
-	s.listener = s.newListener()
+	listener, err := net.Listen("tcp", s.config.Address())
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+	s.listener = listener
+
+	log.Printf("Server listening on %s", s.config.Address())
 
 	s.wg.Add(1)
 	go s.acceptConnections()
@@ -50,7 +45,7 @@ func (s *Server) Stop() error {
 
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
-			return fmt.Errorf("Error closing listener: %w", err)
+			return fmt.Errorf("error closing listener: %w", err)
 		}
 	}
 
@@ -77,22 +72,11 @@ func (s *Server) acceptConnections() {
 
 		log.Printf("New connection from %s", conn.RemoteAddr())
 
-		s.handleConnection(conn)
+		connection := NewConnection(s.hub, conn)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			connection.Run()
+		}()
 	}
-}
-
-func (s *Server) handleConnection(conn net.Conn) {
-	client := NewClient(s.hub, conn)
-
-	s.hub.register <- client
-
-	s.wg.Add(2)
-	go func() {
-		defer s.wg.Done()
-		client.ReadPump()
-	}()
-	go func() {
-		defer s.wg.Done()
-		client.WritePump()
-	}()
 }

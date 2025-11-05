@@ -6,49 +6,47 @@ import (
 )
 
 type Room struct {
-	Code string
-	Name string
-	Clients map[*Client]bool
-	CreatedAt time.Time
-	mu sync.RWMutex
+	Name        string
+	Connections map[*Connection]bool
+	CreatedAt   time.Time
+	mu          sync.RWMutex
 }
 
-func NewRoom(code string, name string) *Room {
+func NewRoom(name string) *Room {
 	return &Room{
-		Code: code,
-		Name: name,
-		Clients: make(map[*Client]bool),
-		CreatedAt: time.Now(),
+		Name:        name,
+		Connections: make(map[*Connection]bool),
+		CreatedAt:   time.Now(),
 	}
 }
 
-func (r *Room) AddClient(client *Client) {
+func (r *Room) AddConnection(connection *Connection) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.Clients[client] = true
-	client.currentRoom = r.Code
+	r.Connections[connection] = true
+	connection.currentRoom = r
 }
 
-func (r *Room) RemoveClient(client *Client) {
+func (r *Room) RemoveConnection(connection *Connection) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.Clients, client)
-	client.currentRoom = ""
+	delete(r.Connections, connection)
+	connection.currentRoom = nil
 }
 
-func (r *Room) ClientCount() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.Clients)
+func (r *Room) ConnectionCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.Connections)
 }
 
-func (r *Room) GetClients() []*Client {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Room) GetConnections() []*Connection {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	clients := make([]*Client, 0, len(r.Clients))
-	for client := range r.Clients {
-		clients = append(clients, client)
+	connections := make([]*Connection, 0, len(r.Connections))
+	for connection := range r.Connections {
+		connections = append(connections, connection)
 	}
-	return clients
+	return connections
 }

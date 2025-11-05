@@ -1,49 +1,21 @@
 package protocol
 
-import "encoding/json"
-
-type MessageType uint8
-
-const (
-	MsgAuth MessageType = iota + 1
-	MsgCreateRoom
-	MsgJoinRoom
-	MsgLeaveRoom
-	MsgChatMessage
-	MsgServerResponse
-	MsgRoomList
-	MsgUserJoined
-	MsgUserLeft
-)
-
+// Message represents all communication between client and server
+// Simple flat structure - only relevant fields are populated per message type
 type Message struct {
-	Type MessageType `json:"type"`
-	Payload json.RawMessage `json:"payload"`
+	Type     string `json:"type"`               // "auth", "join", "leave", "chat", "system"
+	Username string `json:"username,omitempty"` // For auth and system messages
+	Room     string `json:"room,omitempty"`     // Room name (no codes)
+	Content  string `json:"content,omitempty"`  // Chat content or system message
+	Success  bool   `json:"success,omitempty"`  // For server responses
+	Error    string `json:"error,omitempty"`    // Error message if any
 }
 
-type AuthPayload struct {
-	Username string `json:"username"`
-}
-
-type CreateRoomPayload struct {
-	RoomName string `json:"room_name"`
-}
-
-type JoinRoomPayload struct {
-	RoomCode string `json:"room_code"`
-}
-
-type ChatMessagePayload struct {
-	Content string `json:"content"`
-}
-
-type ServerResponsePayload struct {
-	Success bool `json:"success"`
-	Message string `json:"message"`
-	Data map[string]any `json:"data,omitempty"`
-}
-
-type UserEventPayload struct {
-	Username string `json:"username"`
-	RoomCode string `json:"room_code"`
-}
+// Message type constants
+const (
+	TypeAuth   = "auth"
+	TypeJoin   = "join"
+	TypeLeave  = "leave"
+	TypeChat   = "chat"
+	TypeSystem = "system"
+)
