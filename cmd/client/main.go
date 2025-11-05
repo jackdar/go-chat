@@ -13,97 +13,76 @@ import (
 
 func main() {
 	addr := flag.String("addr", "localhost:8080", "Server address")
-	username := flag.String("user", "User"+fmt.Sprint(os.Getpid()), "Username")
+	username := flag.String("user", fmt.Sprintf("User%d", os.Getpid()), "Username")
 	flag.Parse()
 
 	log.Printf("Connecting to server at %s as %s", *addr, *username)
 
-	conn, err := client.NewConnection(*addr, *username)
+	c, err := client.NewClient(*addr, *username)
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
 	}
-	defer conn.Close()
+	defer c.Close()
 
 	log.Println("Connected! Type '/help' for commands")
 
-	inputCh := make(chan string)
-	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			inputCh <- scanner.Text()
-		}
-		close(inputCh)
-	}()
-
+	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		// print prompt once before waiting (optional)
-		if conn.GetRoomName() != "" {
-			fmt.Printf("[%s] > ", conn.GetRoomName())
+		if c.GetRoom() != "" {
+			fmt.Printf("[%s] > ", c.GetRoom())
 		} else {
 			fmt.Print("> ")
 		}
 
-		select {
-		case line, ok := <-inputCh:
-			if !ok {
-				return
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if err := handleCommand(conn, line); err != nil {
-				log.Printf("Error: %v", err)
-			}
+		if !scanner.Scan() {
+			break
+		}
 
-		case newRoom := <-conn.Updates:
-			// redraw prompt on room change
-			if newRoom != "" {
-				fmt.Printf("\r[%s] > ", newRoom)
-			} else {
-				fmt.Print("\r> ")
-			}
+		// Clear the input line immediately after Enter is pressed
+		fmt.Print("\033[A\033[K")
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		if err := handleCommand(c, line); err != nil {
+			log.Printf("Error: %v", err)
 		}
 	}
 }
 
-func handleCommand(conn *client.Connection, line string) error {
+func handleCommand(c *client.Client, line string) error {
+	if !strings.HasPrefix(line, "/") {
+		return c.SendMessage(line)
+	}
+
 	parts := strings.SplitN(line, " ", 2)
 	cmd := parts[0]
 
 	switch cmd {
 	case "/help":
 		fmt.Println("Commands:")
-		fmt.Println("  /create <room-name>  - Create a new chat room")
-		fmt.Println("  /join <room-code>    - Join an existing room")
-		fmt.Println("  /help                - Help")
-		fmt.Println("  /quit                - Exit")
-		fmt.Println("  <message>            - Send a message to the current room")
-
-	case "/create":
-		if len(parts) < 2 {
-			return fmt.Errorf("usage: create <room-name>")
-		}
-		roomCode, err := conn.CreateRoom(parts[1])
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Room created with code: %s\n", roomCode)
+		fmt.Println("  /join <room-name>  - Join or create a room")
+		fmt.Println("  /leave             - Leave current room")
+		fmt.Println("  /help              - Show this help")
+		fmt.Println("  /quit              - Exit")
+		fmt.Println("  <message>          - Send a message to the current room")
 
 	case "/join":
 		if len(parts) < 2 {
-			return fmt.Errorf("usage: join <room-code>")
+			return fmt.Errorf("usage: /join <room-name>")
 		}
-		if err := conn.JoinRoom(parts[1]); err != nil {
-			return err
-		}
-		fmt.Printf("Joining room %s...\n", parts[1])
+		return c.JoinRoom(parts[1])
 
-	case "quit", "exit":
+	case "/leave":
+		return c.LeaveRoom()
+
+	case "/quit", "/exit":
 		os.Exit(0)
 
 	default:
-		return conn.SendMessage(line)
+		return fmt.Errorf("unknown command: %s (type /help for commands)", cmd)
 	}
 
 	return nil
