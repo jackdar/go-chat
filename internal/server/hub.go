@@ -37,7 +37,6 @@ type RoomAction struct {
 	actionType RoomActionType
 	client     *Client
 	roomCode   string
-	roomName   string
 	response   chan *RoomActionResponse
 }
 

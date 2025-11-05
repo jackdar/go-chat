@@ -13,7 +13,7 @@ type Client struct {
 	conn        net.Conn
 	send        chan []byte
 	username    string
-	currentRoom string
+	currentRoom *Room
 }
 
 func NewClient(hub *Hub, conn net.Conn) *Client {
@@ -24,32 +24,39 @@ func NewClient(hub *Hub, conn net.Conn) *Client {
 	}
 }
 
+func (c *Client) authenticate() error {
+	msg, err := protocol.DecodeMessage(c.conn)
+	if err != nil {
+		return fmt.Errorf("failed to read auth message: %w", err)
+	}
+
+	if msg.Type != protocol.MsgAuth {
+		return fmt.Errorf("expected auth message, got %d", msg.Type)
+	}
+
+	var authPayload protocol.AuthPayload
+	if err := protocol.DecodePayload(msg, &authPayload); err != nil {
+		return fmt.Errorf("failed to decode auth payload: %w", err)
+	}
+
+	c.username = authPayload.Username
+	return nil
+}
+
 func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
 
+	if err := c.authenticate(); err != nil {
+		log.Printf("Authentication failed: %v", err)
+		return
+	}
+
+	c.hub.register <- c
+
 	for {
-		msg, err := protocol.DecodeMessage(c.conn)
-		if err != nil {
-			log.Printf("Failed to read auth: %v", err)
-			return
-		}
-
-		if msg.Type != protocol.MsgAuth {
-			log.Printf("Expected auth message, got %d", msg.Type)
-			return
-		}
-
-		var authPayload protocol.AuthPayload
-		if err := protocol.DecodePayload(msg, &authPayload); err != nil {
-			log.Printf("Failed to decode auth payload: %v", err)
-			return
-		}
-
-		c.username = authPayload.Username
-		c.hub.register <- c
 
 		for {
 			msg, err := protocol.DecodeMessage(c.conn)
@@ -71,16 +78,17 @@ func (c *Client) handleMessage(msg *protocol.Message) {
 		protocol.DecodePayload(msg, &payload)
 
 		responseCh := make(chan *RoomActionResponse, 1)
+
 		c.hub.roomAction <- &RoomAction{
 			actionType: ActionCreateRoom,
 			client:     c,
-			roomName:   payload.RoomName,
 			response:   responseCh,
 		}
 
+		resp := <-responseCh
+
 		log.Printf("Client %s created room %s", c.username, payload.RoomName)
 
-		resp := <-responseCh
 		c.sendResponse(resp)
 
 	case protocol.MsgJoinRoom:
@@ -95,7 +103,6 @@ func (c *Client) handleMessage(msg *protocol.Message) {
 			response:   responseCh,
 		}
 
-
 		log.Printf("Client %s joined room %s", c.username, payload.RoomCode)
 
 		resp := <-responseCh
@@ -105,13 +112,13 @@ func (c *Client) handleMessage(msg *protocol.Message) {
 		var payload protocol.ChatMessagePayload
 		protocol.DecodePayload(msg, &payload)
 
-		if c.currentRoom == "" {
+		if c.currentRoom == nil {
 			log.Printf("Client %s tried to send message without joining a room", c.username)
 			return
 		}
 
 		c.hub.broadcast <- &BroadcastMessage{
-			roomCode: c.currentRoom,
+			roomCode: c.currentRoom.Code,
 			sender:   c,
 			msgType:  protocol.MsgChatMessage,
 			payload: protocol.ChatMessagePayload{

@@ -28,8 +28,6 @@ func EncodeMessage(msgType MessageType, payload any) ([]byte, error) {
 	binary.BigEndian.PutUint32(result[0:4], length)
 	copy(result[4:], msgBytes)
 
-	// log.Printf("DEBUG: length=%d raw=%q", length, string(msgBytes))
-
 	return result, nil
 }
 

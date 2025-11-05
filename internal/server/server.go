@@ -23,16 +23,21 @@ func NewServer(config *Config) *Server {
 	}
 }
 
+func (s *Server) newListener() (net.Listener) {
+	listener, err := net.Listen("tcp", s.config.Address())
+	if err != nil {
+		log.Fatalf("Failed to listen %w", err)
+	}
+
+	log.Printf("Server listening on %s", s.config.Address())
+
+	return listener
+}
+
 func (s *Server) Start() error {
 	go s.hub.Run()
 
-	listener, err := net.Listen("tcp", s.config.Address())
-	if err != nil {
-		return fmt.Errorf("Failed to listen %w", err)
-	}
-	s.listener = listener
-
-	log.Printf("Server listening on %s", s.config.Address())
+	s.listener = s.newListener()
 
 	s.wg.Add(1)
 	go s.acceptConnections()

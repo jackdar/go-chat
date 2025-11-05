@@ -23,7 +23,6 @@ type Message struct {
 
 type AuthPayload struct {
 	Username string `json:"username"`
-	Profile string `json:"profile"`
 }
 
 type CreateRoomPayload struct {
