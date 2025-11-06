@@ -13,7 +13,7 @@ type Config struct {
 func ParseConfig() *Config {
 	config := &Config{}
 
-	flag.StringVar(&config.Host, "host", "localhost", "Host to bind to")
+	flag.StringVar(&config.Host, "host", "0.0.0.0", "Host to bind to")
 	flag.StringVar(&config.Port, "port", "8080", "Port to listen on")
 	flag.Parse()
 
